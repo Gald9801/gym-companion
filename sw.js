@@ -1,5 +1,9 @@
-const VERSION = 'gymapp-v2';
-const SHELL = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const VERSION = 'gymapp-v3';
+const EX_IMGS = ['goblet-squat', 'flat-db-bench', 'bent-row', 'shoulder-press', 'bicep-curls', 'tricep-ext',
+  'rdl', 'incline-bench', 'assisted-pullup', 'lateral-raises', 'hammer-curls', 'skull-crushers',
+  'bulgarian-split', 'bench-variation', 'single-arm-row', 'face-pulls', 'walking-lunges', 'hanging-leg-raises']
+  .map(n => './img/' + n + '.jpg');
+const SHELL = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', ...EX_IMGS];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -251,10 +251,14 @@ async function renderWorkout() {
   for (const ex of plan.exercises) {
     const exSets = daySets.filter(s => s.exercise === ex.id);
     const last = lastSession(allSets, ex.id, state.date);
+    const imgSrc = ex.img || ('img/' + ex.id + '.jpg');
     html += `<div class="card" data-ex="${ex.id}">
       <div class="ex-head">
-        <div class="ex-title">${esc(ex.name)}</div>
-        <div class="ex-target">${ex.sets}×${esc(ex.reps)} · ${ex.rest >= 60 ? (ex.rest / 60) + 'min' : ex.rest + 's'}</div>
+        <img class="ex-thumb" src="${esc(imgSrc)}" alt="" loading="lazy" data-action="show-img" data-src="${esc(imgSrc)}" data-name="${esc(ex.name)}" onerror="this.classList.add('noimg')">
+        <div class="grow">
+          <div class="ex-title">${esc(ex.name)}</div>
+          <div class="ex-target">${ex.sets}×${esc(ex.reps)} · ${ex.rest >= 60 ? (ex.rest / 60) + 'min' : ex.rest + 's'}</div>
+        </div>
       </div>`;
     if (last) html += `<div class="lastline">Last (${fmtDate(last.date)}): <b>${last.txt}</b></div>`;
     if (ex.suggest) html += `<div class="suggest">→ ${esc(ex.suggest)}</div>`;
@@ -653,6 +657,7 @@ document.addEventListener('click', async e => {
       break;
     case 'timer-skip': hideTimer(); break;
     case 'quick-rest': startTimer(parseInt(el.dataset.s, 10), 'Rest'); break;
+    case 'show-img': openModal(`<h3>${esc(el.dataset.name)}</h3><img src="${esc(el.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:#fff">`); break;
     case 'sw-toggle': {
       const s = swState();
       if (s.run) { s.acc += Date.now() - s.t0; s.run = false; } else { s.run = true; s.t0 = Date.now(); }

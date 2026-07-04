@@ -48,9 +48,11 @@ body{padding-bottom:calc(64px + env(safe-area-inset-bottom));}
   padding:6px 14px; font-size:16px;}
 .datebar .cur{font-weight:700; font-size:15px;}
 
-.ex-head{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+.ex-head{display:flex; align-items:center; gap:12px;}
+.ex-thumb{width:64px; height:64px; object-fit:cover; border-radius:10px; background:#fff; flex-shrink:0;}
+.ex-thumb.noimg{display:none;}
 .ex-title{font-size:16px; font-weight:700;}
-.ex-target{color:var(--accent); font-size:13px; font-weight:600; white-space:nowrap;}
+.ex-target{color:var(--accent); font-size:13px; font-weight:600; white-space:nowrap; margin-top:2px;}
 .lastline{color:var(--fg2); font-size:13px; margin:4px 0 2px;}
 .lastline b{color:var(--fg)}
 .suggest{color:var(--accent2); font-size:13px; margin:2px 0;}
