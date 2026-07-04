@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0e1116">
+<title>Gym Companion</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="topbar">
+  <div id="topbar-title">Workout</div>
+  <button id="wake-btn" class="icon-btn" title="Keep screen on">🔆</button>
+</header>
+
+<main id="view"></main>
+
+<div id="timerbar" class="hidden">
+  <div id="timer-ring"><span id="timer-time">0:00</span></div>
+  <div id="timer-label">Rest</div>
+  <div class="timer-actions">
+    <button data-action="timer-add30" class="pill">+30s</button>
+    <button data-action="timer-pause" class="pill" id="timer-pause-btn">Pause</button>
+    <button data-action="timer-skip" class="pill danger">Skip</button>
+  </div>
+</div>
+
+<nav id="tabbar">
+  <button class="tab active" data-tab="workout"><span class="tab-ico">🏋️</span>Workout</button>
+  <button class="tab" data-tab="food"><span class="tab-ico">🍗</span>Food</button>
+  <button class="tab" data-tab="weight"><span class="tab-ico">⚖️</span>Weight</button>
+  <button class="tab" data-tab="more"><span class="tab-ico">⚙️</span>More</button>
+</nav>
+
+<div id="toast" class="hidden"></div>
+<div id="modal-root"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
