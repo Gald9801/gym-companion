@@ -124,7 +124,7 @@ function toast(msg) {
 }
 function openModal(html) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = '<div class="modal-back" data-action="modal-close"><div class="modal" onclick="event.stopPropagation()">' + html + '</div></div>';
+  root.innerHTML = '<div class="modal-back" data-action="modal-close"><div class="modal">' + html + '</div></div>';
 }
 function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
@@ -594,7 +594,7 @@ document.addEventListener('click', async e => {
   if (!el) return;
   const a = el.dataset.action;
   switch (a) {
-    case 'modal-close': closeModal(); break;
+    case 'modal-close': if (e.target.classList.contains('modal-back')) closeModal(); break;
     case 'date-prev': state.date = shiftDate(state.date, -1); state.session = sessionForDate(state.date); render(); break;
     case 'date-next': state.date = shiftDate(state.date, 1); state.session = sessionForDate(state.date); render(); break;
     case 'date-today': state.date = todayStr(); state.session = sessionForDate(state.date); render(); break;
@@ -637,6 +637,14 @@ document.addEventListener('change', e => {
 document.getElementById('wake-btn').addEventListener('click', toggleWakeLock);
 
 /* ---------------- Boot ---------------- */
+window.addEventListener('error', e => {
+  const v = document.getElementById('view');
+  if (v && !v.innerHTML) v.innerHTML = '<div class="card"><b>App error:</b> ' + esc(e.message) + '<br><span class="tiny">' + esc((e.filename || '') + ':' + e.lineno) + '</span></div>';
+});
+window.addEventListener('unhandledrejection', e => {
+  const v = document.getElementById('view');
+  if (v && !v.innerHTML) v.innerHTML = '<div class="card"><b>App error (async):</b> ' + esc(e.reason && (e.reason.message || e.reason)) + '</div>';
+});
 (async function boot() {
   db = await openDB();
   const savedSettings = await kvGet('settings');
