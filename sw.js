@@ -1,4 +1,4 @@
-const VERSION = 'gymapp-v1';
+const VERSION = 'gymapp-v2';
 const SHELL = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

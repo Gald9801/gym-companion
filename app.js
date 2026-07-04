@@ -188,6 +188,29 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
+/* ---------------- Session stopwatch ---------------- */
+const SW_KEY = 'gymapp-stopwatch';
+let swIv = null;
+function swState() { try { return JSON.parse(localStorage.getItem(SW_KEY)) || { run: false, acc: 0, t0: 0 }; } catch (e) { return { run: false, acc: 0, t0: 0 }; } }
+function swSave(s) { localStorage.setItem(SW_KEY, JSON.stringify(s)); }
+function swElapsed(s) { return s.acc + (s.run ? Date.now() - s.t0 : 0); }
+function swFmt(ms) {
+  const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), x = t % 60;
+  return (h ? h + ':' : '') + String(m).padStart(h ? 2 : 1, '0') + ':' + String(x).padStart(2, '0');
+}
+function swTick() {
+  const el = document.getElementById('sw-display');
+  if (!el) { clearInterval(swIv); swIv = null; return; }
+  el.textContent = swFmt(swElapsed(swState()));
+}
+function swEnsureTicking() {
+  if (swState().run && !swIv) swIv = setInterval(swTick, 500);
+}
+function swStart() {
+  const s = swState();
+  if (!s.run) { s.run = true; s.t0 = Date.now(); swSave(s); swEnsureTicking(); }
+}
+
 /* ---------------- Workout tab ---------------- */
 async function renderWorkout() {
   const v = document.getElementById('view');
@@ -199,6 +222,23 @@ async function renderWorkout() {
   html += '<div class="chips">' + Object.keys(state.plan).map(k =>
     `<button class="chip ${sess === k ? 'active' : ''}" data-action="pick-session" data-k="${k}">${esc(state.plan[k].name)}</button>`
   ).join('') + '</div>';
+
+  const sws = swState();
+  html += `<div class="card row between" style="padding:10px 14px">
+    <div class="row"><span class="tiny">SESSION&nbsp;</span><b id="sw-display" style="font-size:18px;font-variant-numeric:tabular-nums">${swFmt(swElapsed(sws))}</b></div>
+    <div class="row">
+      <button class="pill" data-action="sw-toggle">${sws.run ? '⏸ Pause' : '▶ Start'}</button>
+      <button class="pill" data-action="sw-reset">↺</button>
+    </div>
+  </div>
+  <div class="chips">
+    <span class="tiny" style="align-self:center">Rest timer:</span>
+    <button class="chip small" data-action="quick-rest" data-s="60">1:00</button>
+    <button class="chip small" data-action="quick-rest" data-s="90">1:30</button>
+    <button class="chip small" data-action="quick-rest" data-s="120">2:00</button>
+    <button class="chip small" data-action="quick-rest" data-s="180">3:00</button>
+  </div>`;
+  swEnsureTicking();
 
   if (!sess) {
     const auto = sessionForDate(state.date);
@@ -235,6 +275,7 @@ async function renderWorkout() {
     <div class="exlinks">
       <a class="linkbtn" href="${esc(ex.video)}" target="_blank" rel="noopener">🎬 Form video</a>
       <button class="linkbtn" data-action="toggle-cues" style="border:none;background:var(--bg3)">📋 Cues</button>
+      <button class="linkbtn" data-action="quick-rest" data-s="${ex.rest}" style="border:none;background:var(--bg3)">⏱ Rest ${ex.rest >= 60 ? Math.floor(ex.rest / 60) + ':' + String(ex.rest % 60).padStart(2, '0') : ex.rest + 's'}</button>
     </div>
     <div class="cues">${esc(ex.cue)}</div>
     </div>`;
@@ -259,6 +300,7 @@ async function logSet(exId, rest) {
   const r = parseInt(document.getElementById('r-' + exId).value, 10);
   if (!r) { toast('Enter reps'); return; }
   await dbPut('sets', { id: uid(), date: state.date, session: state.session, exercise: exId, weight: w, reps: r, note: '', ts: Date.now() });
+  swStart(); // first set of the day starts the session clock
   const ex = state.plan[state.session].exercises.find(e => e.id === exId);
   startTimer(rest || state.settings.defaultRest, 'Rest — ' + (ex ? ex.name : exId));
   render();
@@ -610,6 +652,14 @@ document.addEventListener('click', async e => {
       else { timer.end = Date.now() + (timer.pausedLeft || timer.left) * 1000; timer.running = true; el.textContent = 'Pause'; }
       break;
     case 'timer-skip': hideTimer(); break;
+    case 'quick-rest': startTimer(parseInt(el.dataset.s, 10), 'Rest'); break;
+    case 'sw-toggle': {
+      const s = swState();
+      if (s.run) { s.acc += Date.now() - s.t0; s.run = false; } else { s.run = true; s.t0 = Date.now(); }
+      swSave(s); swEnsureTicking(); render();
+      break;
+    }
+    case 'sw-reset': swSave({ run: false, acc: 0, t0: 0 }); render(); break;
     case 'food-add': foodAddModal(); break;
     case 'food-custom': foodCustomModal(); break;
     case 'lib-add': await libAdd(el.dataset.id, parseFloat(el.dataset.qty)); break;
