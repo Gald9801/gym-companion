@@ -540,7 +540,7 @@ async function logWeight() {
 async function renderMore() {
   const v = document.getElementById('view');
   const s = state.settings;
-  const lib = (await dbAll('library')).sort((a, b) => a.name.localeCompare(b.name));
+  const lib = alive(await dbAll('library')).sort((a, b) => a.name.localeCompare(b.name));
   const lastSync = await kvGet('lastSync');
   let html = `
   <details class="sect" open><summary>GitHub sync ☁️</summary><div class="inner">
