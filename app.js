@@ -144,6 +144,7 @@ function startTimer(seconds, label) {
   clearInterval(timer.iv);
   timer.iv = setInterval(tickTimer, 250);
   document.getElementById('timerbar').classList.remove('hidden', 'finished');
+  document.body.classList.add('timer-on');
   document.getElementById('timer-pause-btn').textContent = 'Pause';
   tickTimer();
 }
@@ -162,6 +163,7 @@ function tickTimer() {
 function hideTimer() {
   clearInterval(timer.iv); timer.running = false;
   document.getElementById('timerbar').classList.add('hidden');
+  document.body.classList.remove('timer-on');
 }
 function beep() {
   try {
