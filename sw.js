@@ -1,4 +1,4 @@
-const VERSION = 'gymapp-v4';
+const VERSION = 'gymapp-v5';
 const EX_IMGS = ['goblet-squat', 'flat-db-bench', 'bent-row', 'shoulder-press', 'bicep-curls', 'tricep-ext',
   'rdl', 'incline-bench', 'assisted-pullup', 'lateral-raises', 'hammer-curls', 'skull-crushers',
   'bulgarian-split', 'bench-variation', 'single-arm-row', 'face-pulls', 'walking-lunges', 'hanging-leg-raises']

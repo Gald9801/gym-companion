@@ -112,6 +112,14 @@ function sessionForDate(s) {
   for (const k of Object.keys(state.plan)) if (state.plan[k].day === wd) return k;
   return null;
 }
+// Prefer the session actually trained that day (most logged sets); fall back to weekday schedule.
+async function autoSession(date) {
+  const ds = await dbByDate('sets', date);
+  const counts = {};
+  for (const s of ds) if (state.plan[s.session]) counts[s.session] = (counts[s.session] || 0) + 1;
+  const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  return best || sessionForDate(date);
+}
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /* ---------------- Toast / modal ---------------- */
@@ -223,6 +231,20 @@ async function renderWorkout() {
     `<button class="chip ${sess === k ? 'active' : ''}" data-action="pick-session" data-k="${k}">${esc(state.plan[k].name)}</button>`
   ).join('') + '</div>';
 
+  // "what's logged this day" banner — visible whichever session chip is active
+  const real = daySets.filter(s => s.exercise !== 'session-end');
+  const markers = daySets.filter(s => s.exercise === 'session-end');
+  if (real.length) {
+    const bySess = {};
+    for (const s of real) bySess[s.session] = (bySess[s.session] || 0) + 1;
+    const parts = Object.keys(bySess).map(k => {
+      const done = markers.find(m => m.session === k);
+      const name = state.plan[k] ? state.plan[k].name : k;
+      return `<b>${esc(name)}</b> — ${bySess[k]} sets${done ? ' · ✅ finished (' + esc(done.note) + ')' : ''}`;
+    });
+    html += `<div class="card" style="padding:10px 14px; border-color:#2e5c41"><span class="muted">📌 Logged this day: </span>${parts.join('<span class="muted"> + </span>')}</div>`;
+  }
+
   const sws = swState();
   html += `<div class="card row between" style="padding:10px 14px">
     <div class="row"><span class="tiny">SESSION&nbsp;</span><b id="sw-display" style="font-size:18px;font-variant-numeric:tabular-nums">${swFmt(swElapsed(sws))}</b></div>
@@ -284,8 +306,27 @@ async function renderWorkout() {
     <div class="cues">${esc(ex.cue)}</div>
     </div>`;
   }
+  const sessSets = daySets.filter(s => s.session === sess && s.exercise !== 'session-end');
+  const finished = daySets.find(s => s.session === sess && s.exercise === 'session-end');
+  if (finished) {
+    html += `<div class="card" style="text-align:center; border-color:#2e5c41"><b style="color:var(--accent2)">✅ ${esc(plan.name)} finished</b><div class="muted">${esc(finished.note)}</div></div>`;
+  } else if (sessSets.length) {
+    html += `<button class="btn green wide" data-action="finish-workout">✓ Finish workout — save ${esc(plan.name)} (${sessSets.length} sets)</button>`;
+  }
   html += `<button class="btn sec wide" data-action="add-note-set">+ Log extra exercise (not in plan)</button>`;
   v.innerHTML = html;
+}
+async function finishWorkout() {
+  const daySets = await dbByDate('sets', state.date);
+  const count = daySets.filter(s => s.session === state.session && s.exercise !== 'session-end').length;
+  if (!count) { toast('No sets logged yet'); return; }
+  const dur = swElapsed(swState());
+  const note = count + ' sets' + (dur > 60000 ? ' · ' + swFmt(dur) : '');
+  await dbPut('sets', { id: uid(), date: state.date, session: state.session, exercise: 'session-end', weight: 0, reps: 0, note, ts: Date.now() });
+  swSave({ run: false, acc: 0, t0: 0 });
+  hideTimer();
+  toast('Saved: ' + state.plan[state.session].name + ' · ' + note + ' 💪');
+  render();
 }
 function lastSession(allSets, exId, beforeDate) {
   const dates = [...new Set(allSets.filter(s => s.exercise === exId && s.date < beforeDate).map(s => s.date))].sort();
@@ -718,14 +759,15 @@ document.addEventListener('click', async e => {
   const a = el.dataset.action;
   switch (a) {
     case 'modal-close': if (e.target.classList.contains('modal-back')) closeModal(); break;
-    case 'date-prev': state.date = shiftDate(state.date, -1); state.session = sessionForDate(state.date); render(); break;
-    case 'date-next': state.date = shiftDate(state.date, 1); state.session = sessionForDate(state.date); render(); break;
-    case 'date-today': state.date = todayStr(); state.session = sessionForDate(state.date); render(); break;
+    case 'date-prev': state.date = shiftDate(state.date, -1); state.session = await autoSession(state.date); render(); break;
+    case 'date-next': state.date = shiftDate(state.date, 1); state.session = await autoSession(state.date); render(); break;
+    case 'date-today': state.date = todayStr(); state.session = await autoSession(state.date); render(); break;
     case 'pick-session': state.session = state.session === el.dataset.k ? null : el.dataset.k; render(); break;
     case 'log-set': logSet(el.dataset.ex, parseInt(el.dataset.rest, 10)); break;
     case 'del-set': await dbDel('sets', el.dataset.id); render(); break;
     case 'toggle-cues': el.closest('.card').querySelector('.cues').classList.toggle('open'); break;
     case 'add-note-set': extraExerciseModal(); break;
+    case 'finish-workout': finishWorkout(); break;
     case 'save-extra': saveExtra(); break;
     case 'timer-add30': timer.end += 30000; timer.running = true; if (!timer.iv) timer.iv = setInterval(tickTimer, 250); document.getElementById('timerbar').classList.remove('finished'); tickTimer(); break;
     case 'timer-pause':
@@ -788,7 +830,7 @@ window.addEventListener('unhandledrejection', e => {
   if ((await dbAll('library')).length === 0) {
     for (const f of DEFAULT_LIBRARY) await dbPut('library', f);
   }
-  state.session = sessionForDate(state.date);
+  state.session = await autoSession(state.date);
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
