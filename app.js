@@ -32,6 +32,13 @@ const dbByDate = (n, date) => reqP(store(n).index('date').getAll(date));
 const kvGet = k => reqP(store('kv').get(k));
 const kvSet = (k, v) => reqP(store('kv', 'readwrite').put(v, k));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+const alive = rows => rows.filter(r => !r.deleted);
+// Deletes must survive sync: mark the row deleted with a fresh timestamp so the
+// tombstone out-merges the live copy on other devices, instead of erasing it locally.
+async function softDelete(storeName, id) {
+  const row = await dbGet(storeName, id);
+  if (row) { row.deleted = true; row.ts = Date.now(); await dbPut(storeName, row); }
+}
 
 /* ---------------- Defaults ---------------- */
 const DEFAULT_SETTINGS = {
@@ -114,7 +121,7 @@ function sessionForDate(s) {
 }
 // Prefer the session actually trained that day (most logged sets); fall back to weekday schedule.
 async function autoSession(date) {
-  const ds = await dbByDate('sets', date);
+  const ds = alive(await dbByDate('sets', date));
   const counts = {};
   for (const s of ds) if (state.plan[s.session]) counts[s.session] = (counts[s.session] || 0) + 1;
   const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
@@ -225,8 +232,8 @@ function swStart() {
 async function renderWorkout() {
   const v = document.getElementById('view');
   const sess = state.session;
-  const daySets = (await dbByDate('sets', state.date)).sort((a, b) => a.ts - b.ts);
-  const allSets = await dbAll('sets');
+  const daySets = alive(await dbByDate('sets', state.date)).sort((a, b) => a.ts - b.ts);
+  const allSets = alive(await dbAll('sets'));
 
   let html = datebarHTML();
   html += '<div class="chips">' + Object.keys(state.plan).map(k =>
@@ -319,7 +326,7 @@ async function renderWorkout() {
   v.innerHTML = html;
 }
 async function finishWorkout() {
-  const daySets = await dbByDate('sets', state.date);
+  const daySets = alive(await dbByDate('sets', state.date));
   const count = daySets.filter(s => s.session === state.session && s.exercise !== 'session-end').length;
   if (!count) { toast('No sets logged yet'); return; }
   const dur = swElapsed(swState());
@@ -372,7 +379,7 @@ async function saveExtra() {
 async function renderFood() {
   const v = document.getElementById('view');
   const s = state.settings;
-  const entries = (await dbByDate('food', state.date)).sort((a, b) => a.ts - b.ts);
+  const entries = alive(await dbByDate('food', state.date)).sort((a, b) => a.ts - b.ts);
   const cal = Math.round(entries.reduce((t, e) => t + (e.cal || 0), 0));
   const pro = Math.round(entries.reduce((t, e) => t + (e.protein || 0), 0) * 10) / 10;
 
@@ -411,7 +418,7 @@ async function renderFood() {
   v.innerHTML = html;
 }
 async function foodAddModal() {
-  const lib = (await dbAll('library')).sort((a, b) => a.name.localeCompare(b.name));
+  const lib = alive(await dbAll('library')).sort((a, b) => a.name.localeCompare(b.name));
   openModal(`<h3>Add food</h3>
     <div class="searchwrap"><input type="text" id="food-q" placeholder="Search your food library…" autocomplete="off"></div>
     <div class="libresults" id="lib-results"></div>`);
@@ -465,7 +472,7 @@ async function saveCustomFood() {
 async function renderWeight() {
   const v = document.getElementById('view');
   const s = state.settings;
-  const entries = (await dbAll('weight')).sort((a, b) => a.date.localeCompare(b.date));
+  const entries = alive(await dbAll('weight')).sort((a, b) => a.date.localeCompare(b.date));
   const cur = entries.length ? entries[entries.length - 1] : null;
   const wk = entries.filter(e => e.date >= shiftDate(todayStr(), -7));
   const wkTrend = wk.length >= 2 ? (wk[wk.length - 1].kg - wk[0].kg) : null;
@@ -524,7 +531,7 @@ async function logWeight() {
   const date = document.getElementById('wt-date').value;
   const kg = parseFloat(document.getElementById('wt-kg').value);
   if (!date || !kg) { toast('Enter a weight'); return; }
-  const dup = (await dbByDate('weight', date))[0];
+  const dup = alive(await dbByDate('weight', date))[0];
   await dbPut('weight', { id: dup ? dup.id : uid(), date, kg, note: dup ? dup.note : '', ts: Date.now() });
   toast('Saved ' + kg + ' kg'); render();
 }
@@ -766,7 +773,7 @@ document.addEventListener('click', async e => {
     case 'date-today': state.date = todayStr(); state.session = await autoSession(state.date); render(); break;
     case 'pick-session': state.session = state.session === el.dataset.k ? null : el.dataset.k; render(); break;
     case 'log-set': logSet(el.dataset.ex, parseInt(el.dataset.rest, 10)); break;
-    case 'del-set': await dbDel('sets', el.dataset.id); render(); break;
+    case 'del-set': await softDelete('sets', el.dataset.id); render(); break;
     case 'toggle-cues': el.closest('.card').querySelector('.cues').classList.toggle('open'); break;
     case 'add-note-set': extraExerciseModal(); break;
     case 'finish-workout': finishWorkout(); break;
@@ -790,9 +797,10 @@ document.addEventListener('click', async e => {
     case 'food-custom': foodCustomModal(); break;
     case 'lib-add': await libAdd(el.dataset.id, parseFloat(el.dataset.qty)); break;
     case 'save-custom-food': saveCustomFood(); break;
-    case 'del-food': await dbDel('food', el.dataset.id); render(); break;
+    case 'del-food': await softDelete('food', el.dataset.id); render(); break;
     case 'log-weight': logWeight(); break;
-    case 'del-weight': await dbDel('weight', el.dataset.id); render(); break;
+    case 'del-weight': await softDelete('weight', el.dataset.id); render(); break;
+    case 'del-lib': await softDelete('library', el.dataset.id); render(); break;
     case 'save-settings': saveSettings(); break;
     case 'add-exercise': exerciseModal(el.dataset.k, -1); break;
     case 'edit-exercise': exerciseModal(el.dataset.k, parseInt(el.dataset.i, 10)); break;
