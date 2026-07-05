@@ -491,8 +491,17 @@ async function renderMore() {
   const v = document.getElementById('view');
   const s = state.settings;
   const lib = (await dbAll('library')).sort((a, b) => a.name.localeCompare(b.name));
+  const lastSync = await kvGet('lastSync');
   let html = `
-  <details class="sect" open><summary>Backup &amp; PC sync</summary><div class="inner">
+  <details class="sect" open><summary>GitHub sync ☁️</summary><div class="inner">
+    <div class="muted" style="margin-bottom:8px">One tap syncs everything with your <b>private</b> repo (${GH_REPO}) — Claude reads it from the PC. Token is stored only on this phone.</div>
+    <label>Fine-grained personal access token</label>
+    <input type="password" id="gh-token" value="${esc(localStorage.getItem(GH_TOKEN_KEY) || '')}" placeholder="github_pat_…" autocomplete="off">
+    <button class="btn wide" data-action="gh-sync">⇅ Sync now</button>
+    <div class="tiny" id="gh-status" style="margin-top:8px">${lastSync ? 'Last sync: ' + new Date(lastSync).toLocaleString() : 'Never synced yet.'}</div>
+  </div></details>
+
+  <details class="sect"><summary>Backup file (offline fallback)</summary><div class="inner">
     <div class="muted" style="margin-bottom:10px">All data lives only on this phone. Export a file and send it to your PC (WhatsApp/USB) — drop it in <b>weight goals/app-data/</b> for Claude. Import files Claude generates the same way.</div>
     <div class="row">
       <button class="btn grow" data-action="export">⬆ Export data</button>
@@ -576,13 +585,30 @@ async function saveExercise(k, i) {
 }
 
 /* ---------------- Export / import ---------------- */
-async function exportData() {
-  const payload = {
+async function buildExportPayload() {
+  return {
     app: 'gym-companion', version: 1, exportedAt: new Date().toISOString(),
     settings: state.settings, plan: state.plan,
     sets: await dbAll('sets'), food: await dbAll('food'),
     weight: await dbAll('weight'), library: await dbAll('library'),
   };
+}
+async function mergePayload(data) {
+  let added = 0, updated = 0;
+  for (const [storeName, rows] of [['sets', data.sets], ['food', data.food], ['weight', data.weight], ['library', data.library]]) {
+    for (const row of rows || []) {
+      if (!row.id) continue;
+      const cur = await dbGet(storeName, row.id);
+      if (!cur) { await dbPut(storeName, row); added++; }
+      else if ((row.ts || 0) > (cur.ts || 0)) { await dbPut(storeName, row); updated++; }
+    }
+  }
+  if (data.settings && data.settingsWins) { state.settings = { ...DEFAULT_SETTINGS, ...data.settings }; await kvSet('settings', state.settings); }
+  if (data.plan && data.planWins) { state.plan = data.plan; await kvSet('plan', state.plan); }
+  return { added, updated };
+}
+async function exportData() {
+  const payload = await buildExportPayload();
   const name = 'gym-data-' + todayStr() + '.json';
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
   const file = new File([blob], name, { type: 'application/json' });
@@ -601,20 +627,71 @@ async function importData(fileInput) {
   let data;
   try { data = JSON.parse(await f.text()); } catch (e) { toast('Not a valid JSON file'); return; }
   if (data.app !== 'gym-companion') { toast('Not a Gym Companion file'); return; }
-  let added = 0, updated = 0;
-  for (const [storeName, rows] of [['sets', data.sets], ['food', data.food], ['weight', data.weight], ['library', data.library]]) {
-    for (const row of rows || []) {
-      if (!row.id) continue;
-      const cur = await dbGet(storeName, row.id);
-      if (!cur) { await dbPut(storeName, row); added++; }
-      else if ((row.ts || 0) > (cur.ts || 0)) { await dbPut(storeName, row); updated++; }
-    }
-  }
-  if (data.settings && data.settingsWins) { state.settings = { ...DEFAULT_SETTINGS, ...data.settings }; await kvSet('settings', state.settings); }
-  if (data.plan && data.planWins) { state.plan = data.plan; await kvSet('plan', state.plan); }
+  const { added, updated } = await mergePayload(data);
   fileInput.value = '';
   toast(`Imported: ${added} new, ${updated} updated`);
   render();
+}
+
+/* ---------------- GitHub sync ---------------- */
+const GH_REPO = 'Gald9801/gym-data';
+const GH_FILE = 'gym-data.json';
+const GH_TOKEN_KEY = 'gymapp-gh-token';
+function b64encode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decode(b64) {
+  const bin = atob(b64.replace(/\s/g, ''));
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+}
+async function ghApi(path, opts) {
+  const r = await fetch('https://api.github.com/repos/' + GH_REPO + path, {
+    ...(opts || {}),
+    headers: {
+      'Authorization': 'Bearer ' + localStorage.getItem(GH_TOKEN_KEY),
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('GitHub HTTP ' + r.status);
+  return r.json();
+}
+async function ghSync() {
+  const tokenEl = document.getElementById('gh-token');
+  const token = tokenEl ? tokenEl.value.trim() : localStorage.getItem(GH_TOKEN_KEY);
+  if (!token) { toast('Paste your GitHub token first'); return; }
+  localStorage.setItem(GH_TOKEN_KEY, token);
+  const status = m => { const el = document.getElementById('gh-status'); if (el) el.textContent = m; };
+  try {
+    status('Pulling from GitHub…');
+    const cur = await ghApi('/contents/' + GH_FILE);
+    let sha = null, pulled = { added: 0, updated: 0 };
+    if (cur) {
+      sha = cur.sha;
+      const remote = JSON.parse(b64decode(cur.content));
+      if (remote.app === 'gym-companion') pulled = await mergePayload(remote);
+    }
+    status('Pushing…');
+    const payload = await buildExportPayload();
+    await ghApi('/contents/' + GH_FILE, {
+      method: 'PUT',
+      body: JSON.stringify({
+        message: 'sync ' + new Date().toISOString(),
+        content: b64encode(JSON.stringify(payload, null, 1)),
+        ...(sha ? { sha } : {}),
+      }),
+    });
+    await kvSet('lastSync', Date.now());
+    toast(`Synced ✓ pulled ${pulled.added + pulled.updated}, pushed all`);
+    render();
+  } catch (e) {
+    status('Sync failed: ' + e.message + ' — check token / connection');
+    toast('Sync failed');
+  }
 }
 
 /* ---------------- Shared UI ---------------- */
@@ -684,6 +761,7 @@ document.addEventListener('click', async e => {
     case 'save-exercise': saveExercise(el.dataset.k, parseInt(el.dataset.i, 10)); break;
     case 'export': exportData(); break;
     case 'import': document.getElementById('import-file').click(); break;
+    case 'gh-sync': ghSync(); break;
   }
 });
 document.addEventListener('change', e => {
