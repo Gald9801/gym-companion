@@ -1,7 +1,8 @@
-const VERSION = 'gymapp-v8';
+const VERSION = 'gymapp-v9';
 const EX_IMGS = ['goblet-squat', 'flat-db-bench', 'bent-row', 'shoulder-press', 'bicep-curls', 'tricep-ext',
   'rdl', 'incline-bench', 'assisted-pullup', 'lateral-raises', 'hammer-curls', 'skull-crushers',
-  'bulgarian-split', 'bench-variation', 'single-arm-row', 'face-pulls', 'walking-lunges', 'hanging-leg-raises']
+  'bulgarian-split', 'bench-variation', 'single-arm-row', 'face-pulls', 'walking-lunges', 'hanging-leg-raises',
+  'leg-press', 'leg-press-single', 'leg-curl', 'lat-pulldown', 'leg-extension']
   .map(n => './img/' + n + '.jpg');
 const SHELL = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', ...EX_IMGS];
 
