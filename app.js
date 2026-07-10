@@ -403,7 +403,8 @@ async function renderFood() {
     <span class="tiny">${cal <= s.calTarget ? (s.calTarget - cal) + ' kcal left' : (cal - s.calTarget) + ' over target'}</span>
   </div>
   <div class="row" style="margin-bottom:10px">
-    <button class="btn grow" data-action="food-add">+ Add food</button>
+    <button class="btn grow green" data-action="food-quick">⚡ Quick add</button>
+    <button class="btn sec" data-action="food-add">Library</button>
     <button class="btn sec" data-action="food-custom">Custom</button>
   </div>`;
 
@@ -442,6 +443,38 @@ async function libAdd(id, qty) {
   if (!f) return;
   await dbPut('food', { id: uid(), date: state.date, name: f.name + (qty !== 1 ? ' ×' + qty : ''), cal: f.cal * qty, protein: f.protein * qty, carbs: (f.carbs || 0) * qty, fat: (f.fat || 0) * qty, ts: Date.now() });
   toast('Added ' + f.name); render();
+}
+let qaCount = 0;
+function quickAddModal() {
+  qaCount = 0;
+  openModal(`<h3>Quick add</h3>
+    <p class="muted tiny" style="margin:-4px 0 10px">Just numbers — no name needed. Stays open so you can log several in a row (Enter to add).</p>
+    <div class="formgrid">
+      <div><label>Calories</label><input type="number" id="qa-cal" inputmode="numeric" autocomplete="off"></div>
+      <div><label>Protein (g)</label><input type="number" id="qa-pro" inputmode="decimal" autocomplete="off"></div>
+    </div>
+    <button class="btn wide green" data-action="quick-add-food" style="margin-top:12px">Add</button>
+    <div class="muted tiny" id="qa-count" style="margin-top:10px;text-align:center"></div>`);
+  const onKey = e => { if (e.key === 'Enter') { e.preventDefault(); quickAddFood(); } };
+  const cal = document.getElementById('qa-cal');
+  const pro = document.getElementById('qa-pro');
+  cal.addEventListener('keydown', onKey);
+  pro.addEventListener('keydown', onKey);
+  cal.focus();
+}
+async function quickAddFood() {
+  const calEl = document.getElementById('qa-cal');
+  const proEl = document.getElementById('qa-pro');
+  if (!calEl) return;
+  const cal = parseFloat(calEl.value) || 0;
+  const pro = parseFloat(proEl.value) || 0;
+  if (!cal && !pro) { toast('Enter calories or protein'); return; }
+  await dbPut('food', { id: uid(), date: state.date, name: 'Quick entry', cal, protein: pro, carbs: 0, fat: 0, ts: Date.now() });
+  qaCount++;
+  calEl.value = ''; proEl.value = ''; calEl.focus();
+  const c = document.getElementById('qa-count');
+  if (c) c.textContent = `${qaCount} added today — running total updates behind this box`;
+  render();
 }
 function foodCustomModal() {
   openModal(`<h3>Custom food</h3>
@@ -793,6 +826,8 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'sw-reset': swSave({ run: false, acc: 0, t0: 0 }); render(); break;
+    case 'food-quick': quickAddModal(); break;
+    case 'quick-add-food': await quickAddFood(); break;
     case 'food-add': foodAddModal(); break;
     case 'food-custom': foodCustomModal(); break;
     case 'lib-add': await libAdd(el.dataset.id, parseFloat(el.dataset.qty)); break;
