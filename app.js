@@ -292,7 +292,9 @@ async function renderWorkout() {
         </div>
       </div>`;
     if (last) html += `<div class="lastline">Last (${fmtDate(last.date)}): <b>${last.txt}</b></div>`;
-    if (ex.suggest) html += `<div class="suggest">→ ${esc(ex.suggest)}</div>`;
+    const prog = progression(last, ex);
+    if (prog) html += `<div class="suggest ${prog.cls}">→ ${esc(prog.txt)}</div>`;
+    else if (ex.suggest) html += `<div class="suggest">→ ${esc(ex.suggest)} <span class="tiny">(starting point)</span></div>`;
 
     exSets.forEach((s, i) => {
       html += `<div class="setline"><span class="setno">S${i + 1}</span>
@@ -348,6 +350,31 @@ function prefill(todaySets, last) {
   if (todaySets.length) { const s = todaySets[todaySets.length - 1]; return { w: s.weight || '', r: s.reps || '' }; }
   if (last && last.sets.length) { const s = last.sets[last.sets.length - 1]; return { w: s.weight || '', r: '' }; }
   return { w: '', r: '' };
+}
+// Top of a rep range: "8-12" -> 12, "10-15/leg" -> 15, "15" -> 15
+function topReps(reps) {
+  const n = String(reps).match(/\d+/g);
+  return n ? Math.max(...n.map(Number)) : null;
+}
+// Auto progressive-overload cue from the last logged session (double progression).
+// Cross-session by design: `last` comes from lastSession(), which keys on exercise id
+// across FBA/FBB/FBC. Once there's history this replaces the hardcoded `suggest`.
+function progression(last, ex) {
+  if (!last || !last.sets.length) return null;
+  const top = topReps(ex.reps);
+  const maxW = Math.max(...last.sets.map(s => s.weight));   // judge progress on the top weight used
+  const atTop = last.sets.filter(s => s.weight === maxW);
+  const reps = atTop.map(s => s.reps);
+  const minReps = Math.min(...reps);
+  if (maxW === 0) {
+    return top && minReps >= top
+      ? { txt: `Bodyweight ${minReps}+ clean — add load or a tougher variation`, cls: 'up' }
+      : { txt: `Bodyweight — beat ${reps.join('/')} reps`, cls: 'hold' };
+  }
+  if (top && minReps >= top && atTop.length >= ex.sets) {   // hit top of range for every set -> add weight
+    return { txt: `Earned it → try ${maxW + 2.5} kg (hit ${minReps}×${atTop.length} at ${maxW})`, cls: 'up' };
+  }
+  return { txt: `Stay ${maxW} kg — beat ${reps.join('/')}, aim ${top} clean`, cls: 'hold' };
 }
 async function logSet(exId, rest) {
   const w = parseFloat(document.getElementById('w-' + exId).value) || 0;

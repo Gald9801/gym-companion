@@ -57,6 +57,8 @@ body.timer-on{padding-bottom:calc(160px + env(safe-area-inset-bottom));}
 .lastline{color:var(--fg2); font-size:13px; margin:4px 0 2px;}
 .lastline b{color:var(--fg)}
 .suggest{color:var(--accent2); font-size:13px; margin:2px 0;}
+.suggest.up{color:var(--accent2); font-weight:600;}
+.suggest.hold{color:var(--accent);}
 .cues{color:var(--fg2); font-size:13px; margin-top:6px; line-height:1.45; display:none;
   border-top:1px dashed var(--line); padding-top:8px;}
 .cues.open{display:block}
