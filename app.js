@@ -645,7 +645,8 @@ async function renderMore() {
         </span></div>`;
     });
   }
-  html += `</div></details>
+  html += `<button class="btn sec wide" style="margin-top:12px" data-action="reset-plan">↺ Reset plan to app default</button>
+  </div></details>
 
   <details class="sect"><summary>Food library (${lib.length})</summary><div class="inner">`;
   for (const f of lib) {
@@ -873,6 +874,12 @@ document.addEventListener('click', async e => {
       }
       break;
     case 'save-exercise': saveExercise(el.dataset.k, parseInt(el.dataset.i, 10)); break;
+    case 'reset-plan':
+      if (confirm('Replace your plan with the app default? Custom edits are lost; logged history is kept.')) {
+        state.plan = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+        await kvSet('plan', state.plan); render(); toast('Plan reset to default');
+      }
+      break;
     case 'export': exportData(); break;
     case 'import': document.getElementById('import-file').click(); break;
     case 'gh-sync': ghSync(); break;
